@@ -112,6 +112,21 @@ side-by-side sample completions, and reward/KL/completion-length plots. The real
 numbers are pending a full Colab/Kaggle T4 run; the notebook creates all artifacts
 in one pass.
 
+## Troubleshooting
+
+On some Colab images, PEFT fails at LoRA injection with:
+
+```text
+ImportError: Found an incompatible version of torchao. Found version 0.10.0,
+but only versions above 0.16.0 are supported
+```
+
+Torchao is not used by this project. Remove Colab's old copy and rerun:
+
+```bash
+pip uninstall -y torchao
+```
+
 ```bash
 make test
 make lint

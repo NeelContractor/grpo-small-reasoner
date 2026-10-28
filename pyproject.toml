@@ -7,7 +7,7 @@ name = "grpo-small-reasoner"
 version = "0.1.0"
 description = "GRPO fine-tuning of small language models for GSM8K math reasoning"
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.11"
 dependencies = [
     "datasets>=3.0",
     "matplotlib>=3.11.2",
