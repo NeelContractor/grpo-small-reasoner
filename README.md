@@ -8,7 +8,7 @@ Work in progress; this README will be expanded after training.
 - [x] Phase 1: baseline evaluation
 - [x] Phase 2: reward functions
 - [x] Phase 3: training
-- [ ] Phase 4: results
+- [ ] Phase 4: results (tooling ready; needs a full T4 run)
 - [ ] Phase 5: final documentation
 
 ## Setup
@@ -75,8 +75,42 @@ when `report_to: wandb`. The full config saves checkpoints, writes
 adapter; provide `HF_TOKEN`.
 
 The Colab/Kaggle wrapper is `notebooks/train_colab.ipynb`. It clones the repo,
-installs dependencies, reads `WANDB_API_KEY`/`HF_TOKEN` from Colab secrets, and
-runs `train.py`.
+installs dependencies, reads `WANDB_API_KEY`/`HF_TOKEN` from Colab secrets, runs
+`train.py`, then runs the Phase 4 evaluation and report in the same runtime.
+
+## Results (Phase 4)
+
+After a full training run, evaluate the adapter with the exact baseline settings
+and build the report:
+
+```bash
+make trained-eval
+make report
+```
+
+Equivalent explicit commands:
+
+```bash
+uv run grpo-eval \
+  --model Qwen/Qwen2.5-0.5B-Instruct \
+  --adapter outputs/grpo-qwen2.5-0.5b/final_adapter \
+  --split test --limit 50 --seed 42 --max-new-tokens 512 \
+  --batch-size 1 --temperature 0.0 \
+  --output results/trained.json
+
+uv run grpo-report \
+  --baseline results/baseline.json \
+  --trained results/trained.json \
+  --history outputs/grpo-qwen2.5-0.5b/train_history.json \
+  --output results/comparison.md \
+  --plot results/reward_curves.png
+```
+
+`grpo-report` refuses to compare runs whose seed, subset size, prompt, decoding
+settings, or base model differ. It writes a before/after accuracy and format table,
+side-by-side sample completions, and reward/KL/completion-length plots. The real
+numbers are pending a full Colab/Kaggle T4 run; the notebook creates all artifacts
+in one pass.
 
 ```bash
 make test

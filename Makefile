@@ -1,4 +1,7 @@
-.PHONY: install lint format test check baseline eval smoke train
+.PHONY: install lint format test check baseline eval smoke train trained-eval report
+
+MODEL ?= Qwen/Qwen2.5-0.5B-Instruct
+TRAIN_OUT ?= outputs/grpo-qwen2.5-0.5b
 
 install:
 	uv sync --extra dev
@@ -31,3 +34,18 @@ smoke:
 # Full run; intended for Colab/Kaggle or a CUDA machine.
 train:
 	uv run python train.py --config configs/train_full.yaml
+
+# Phase 4: identical eval settings to the Phase 1 baseline.
+trained-eval:
+	uv run grpo-eval --model "$(MODEL)" \
+		--adapter "$(or $(ADAPTER),$(TRAIN_OUT)/final_adapter)" \
+		--split test --limit 50 --seed 42 --max-new-tokens 512 \
+		--batch-size 1 --temperature 0.0 \
+		--output "$(or $(OUTPUT),results/trained.json)"
+
+# Build results/comparison.md and results/reward_curves.png.
+report:
+	uv run grpo-report --baseline results/baseline.json \
+		--trained "$(or $(TRAINED),results/trained.json)" \
+		--history "$(or $(HISTORY),$(TRAIN_OUT)/train_history.json)" \
+		--output results/comparison.md --plot results/reward_curves.png
