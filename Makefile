@@ -1,4 +1,4 @@
-.PHONY: install lint format test check baseline eval
+.PHONY: install lint format test check baseline eval smoke train
 
 install:
 	uv sync --extra dev
@@ -23,3 +23,11 @@ baseline:
 eval:
 	uv run grpo-eval --model "$(MODEL)" $(if $(ADAPTER),--adapter "$(ADAPTER)") \
 		--output "$(if $(OUTPUT),$(OUTPUT),results/eval.json)"
+
+# Tiny local smoke run (Apple MPS / CPU).
+smoke:
+	uv run python train.py --config configs/train_smoke.yaml
+
+# Full run; intended for Colab/Kaggle or a CUDA machine.
+train:
+	uv run python train.py --config configs/train_full.yaml
