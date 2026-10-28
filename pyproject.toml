@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "grpo-small-reasoner"
+version = "0.1.0"
+description = "GRPO fine-tuning of small language models for GSM8K math reasoning"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "datasets>=3.0",
+    "peft>=0.13",
+    "torch>=2.4",
+    "transformers>=4.56",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pre-commit>=4.0",
+    "pytest>=8.0",
+    "ruff>=0.8",
+]
+
+[project.scripts]
+grpo-eval = "grpo_reasoner.evaluate:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/grpo_reasoner"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
