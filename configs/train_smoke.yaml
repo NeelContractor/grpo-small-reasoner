@@ -1,0 +1,65 @@
+# Laptop smoke test: verifies the GRPO pipeline end-to-end in a few minutes.
+model:
+  name: Qwen/Qwen2.5-0.5B-Instruct
+  dtype: float32
+
+lora:
+  enabled: true
+  r: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+data:
+  split: train
+  limit: 8
+  seed: 42
+
+training:
+  output_dir: outputs/smoke
+  learning_rate: 1.0e-5
+  # Two completions per prompt, one prompt per optimizer step.
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 1
+  max_steps: 2
+  num_generations: 2
+  max_completion_length: 128
+  temperature: 1.0
+  beta: 0.04
+  logging_steps: 1
+  save_steps: 2
+  save_total_limit: 1
+  gradient_checkpointing: false
+  optim: adamw_torch
+  use_cpu: false
+  fp16: false
+  bf16: false
+  report_to: none
+  project: grpo-small-reasoner
+  run_name: smoke
+  log_completions: false
+  seed: 42
+
+rewards:
+  format_weight: 0.5
+  length_penalty:
+    enabled: false
+    target_chars: 2000
+    weight: 0.1
+
+hub:
+  push: false
+  repo_id: null
+  private: true
+
+unsloth:
+  enabled: false
+  load_in_4bit: false
+  max_seq_length: 1024

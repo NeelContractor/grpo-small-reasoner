@@ -11,8 +11,11 @@ requires-python = ">=3.11,<3.13"
 dependencies = [
     "datasets>=3.0",
     "peft>=0.13",
+    "pyyaml>=6.0.3",
     "torch>=2.4",
     "transformers>=4.56",
+    "trl>=1.16.0",
+    "wandb>=0.31.0",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +27,7 @@ dev = [
 
 [project.scripts]
 grpo-eval = "grpo_reasoner.evaluate:main"
+grpo-train = "grpo_reasoner.train:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/grpo_reasoner"]
