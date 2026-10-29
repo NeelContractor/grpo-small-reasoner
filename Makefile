@@ -2,6 +2,7 @@
 
 MODEL ?= Qwen/Qwen2.5-0.5B-Instruct
 TRAIN_OUT ?= outputs/grpo-qwen2.5-0.5b
+HISTORY ?= $(if $(wildcard $(TRAIN_OUT)/train_history.json),$(TRAIN_OUT)/train_history.json,results/train_history.json)
 
 install:
 	uv sync --extra dev
@@ -47,5 +48,5 @@ trained-eval:
 report:
 	uv run grpo-report --baseline results/baseline.json \
 		--trained "$(or $(TRAINED),results/trained.json)" \
-		--history "$(or $(HISTORY),$(TRAIN_OUT)/train_history.json)" \
+		--history "$(HISTORY)" \
 		--output results/comparison.md --plot results/reward_curves.png

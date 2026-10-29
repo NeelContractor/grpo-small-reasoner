@@ -1,19 +1,27 @@
 # grpo-small-reasoner
 
 Improving a small language model's math reasoning with GRPO and verifiable rewards.
-Work in progress; this README will be expanded after training.
 
 ## Status
 
 - [x] Phase 1: baseline evaluation
 - [x] Phase 2: reward functions
 - [x] Phase 3: training
-- [ ] Phase 4: results (tooling ready; needs a full T4 run)
+- [x] Phase 4: results
 - [ ] Phase 5: final documentation
+
+## Results at a glance
+
+A 200-step GRPO run on a Colab T4 improved strict GSM8K accuracy on the fixed
+50-example test subset from **34.0% to 46.0%** (+12.0 pp). The result is directional,
+not statistically significant (McNemar exact p = 0.109), and the adapter did **not**
+learn the requested `<think>`/`<answer>` format. See [Results](#results-phase-4) for
+the full caveats.
 
 ## Setup
 
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.11 or 3.12.
+Requires [uv](https://docs.astral.sh/uv/) and Python 3.11+ (tested with 3.12 locally
+and 3.13 on Colab).
 
 ```bash
 uv sync --extra dev
@@ -80,37 +88,73 @@ installs dependencies, reads `WANDB_API_KEY`/`HF_TOKEN` from Colab secrets, runs
 
 ## Results (Phase 4)
 
-After a full training run, evaluate the adapter with the exact baseline settings
-and build the report:
+Full run: `Qwen/Qwen2.5-0.5B-Instruct` + LoRA, 200 GRPO steps on one Colab T4,
+1h45m. The adapter is published at
+[`NeelContractor/grpo-qwen2.5-0.5b-gsm8k`](https://huggingface.co/NeelContractor/grpo-qwen2.5-0.5b-gsm8k).
 
-```bash
-make trained-eval
-make report
-```
+Evaluation is the fixed 50-example GSM8K test subset (`seed=42`, greedy decoding,
+`max_new_tokens=512`) used for the Phase 1 baseline.
 
-Equivalent explicit commands:
+| Stage | Correct | Accuracy | Format adherence |
+| --- | ---: | ---: | ---: |
+| Baseline (untrained) | 17/50 | 34.0% | 0.0% |
+| GRPO adapter | 23/50 | 46.0% | 0.0% |
+| Change | +6 | +12.0 pp | +0.0 pp |
+
+**Interpretation.** The adapter improved the strict final-answer score, but the
+format reward stayed at zero for every training step, so the model never learned
+the requested `<think>...</think><answer>...</answer>` template. The gain comes
+from the correctness reward on plain reasoning.
+
+**The result is fragile.** Strict scoring uses the extracted final answer (the last
+number when the model emits no answer tag); a lenient upper-bound check (gold value
+mentioned anywhere) gives 25/50 (50.0%) for the baseline and 27/50 (54.0%) for the
+adapter, a +4.0 pp gain. The headline +12.0 pp therefore shrinks to +4.0 pp when
+intermediate mentions are allowed, and the strict metric is sensitive to
+final-answer formatting. The paired outcomes are 8 improved, 2 regressed, 15 both
+correct, and 25 both wrong; McNemar exact two-sided p = 0.109. With 50 examples,
+this is not statistically significant at 0.05. Treat it as directional evidence,
+not a benchmark claim.
+
+Training curves: correctness reward averaged 0.40 over the first 10 steps and 0.46
+over the last 20; KL rose from 0.0007 to 0.0063; mean completion length stayed near
+239 tokens.
+
+**Artifacts**
+
+- [`results/comparison.md`](results/comparison.md): full table, sensitivity check,
+  paired outcomes, and side-by-side samples.
+- [`results/reward_curves.png`](results/reward_curves.png): reward, length, KL, and
+  within-group reward std.
+- [`results/baseline.json`](results/baseline.json) and
+  [`results/trained.json`](results/trained.json): raw generations and predictions.
+- [`results/train_history.json`](results/train_history.json) and
+  [`results/train_config_resolved.json`](results/train_config_resolved.json):
+  run metadata needed to regenerate the report.
+
+### Reproduce the results
+
+Evaluate the published adapter with the exact baseline settings:
 
 ```bash
 uv run grpo-eval \
   --model Qwen/Qwen2.5-0.5B-Instruct \
-  --adapter outputs/grpo-qwen2.5-0.5b/final_adapter \
+  --adapter NeelContractor/grpo-qwen2.5-0.5b-gsm8k \
   --split test --limit 50 --seed 42 --max-new-tokens 512 \
   --batch-size 1 --temperature 0.0 \
   --output results/trained.json
+```
 
-uv run grpo-report \
-  --baseline results/baseline.json \
-  --trained results/trained.json \
-  --history outputs/grpo-qwen2.5-0.5b/train_history.json \
-  --output results/comparison.md \
-  --plot results/reward_curves.png
+Regenerate the report and plot from the committed artifacts (no GPU needed):
+
+```bash
+make report
 ```
 
 `grpo-report` refuses to compare runs whose seed, subset size, prompt, decoding
-settings, or base model differ. It writes a before/after accuracy and format table,
-side-by-side sample completions, and reward/KL/completion-length plots. The real
-numbers are pending a full Colab/Kaggle T4 run; the notebook creates all artifacts
-in one pass.
+settings, or base model differ. It writes the accuracy/sensitivity/paired tables,
+side-by-side samples, and reward/KL/completion-length plots. The Colab notebook
+runs training, evaluation, and report generation in one pass.
 
 ## Troubleshooting
 
