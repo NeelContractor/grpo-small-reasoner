@@ -1,6 +1,12 @@
 import pytest
 
-from grpo_reasoner.extract import answers_match, extract_answer, extract_gold_answer
+from grpo_reasoner.extract import (
+    answers_match,
+    extract_answer,
+    extract_gold_answer,
+    numbers_in_text,
+    text_mentions_answer,
+)
 
 
 @pytest.mark.parametrize(
@@ -44,6 +50,21 @@ def test_extract_answer_returns_none(text):
 
 def test_answer_tag_takes_priority_over_later_numbers():
     assert extract_answer("<answer>10</answer>\nThen I checked 99.") == "10"
+
+
+def test_numbers_in_text():
+    assert numbers_in_text("12 face masks every 2 days, $1,000 total") == [
+        "12",
+        "2",
+        "1000",
+    ]
+    assert numbers_in_text(None) == []
+
+
+def test_text_mentions_answer():
+    text = "The turtle crawls 120 feet in 40 seconds."
+    assert text_mentions_answer(text, "120")
+    assert not text_mentions_answer(text, "3")
 
 
 def test_gold_extraction():

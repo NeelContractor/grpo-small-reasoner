@@ -79,6 +79,23 @@ def extract_answer(text: str | None) -> str | None:
     return _last_number(text)
 
 
+def numbers_in_text(text: str | None) -> list[str]:
+    """Return every canonical numeric token found in text, in order."""
+    if not text:
+        return []
+    numbers: list[str] = []
+    for match in _NUMBER_RE.finditer(text):
+        canonical = _canonical_number(match.group())
+        if canonical is not None:
+            numbers.append(canonical)
+    return numbers
+
+
+def text_mentions_answer(text: str | None, answer: str | None) -> bool:
+    """Return whether any numeric token in text matches the answer."""
+    return any(answers_match(number, answer) for number in numbers_in_text(text))
+
+
 def extract_gold_answer(reference: str | None) -> str | None:
     """Extract the reference answer from a GSM8K ``answer`` field."""
     if not reference:

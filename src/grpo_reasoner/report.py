@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from grpo_reasoner.extract import text_mentions_answer
 from grpo_reasoner.rewards import has_required_format
 
 _SETTING_PATHS = (
@@ -52,6 +54,49 @@ def format_adherence(result: Mapping[str, Any]) -> float:
         return 0.0
     formatted = sum(has_required_format(example.get("completion") or "") for example in examples)
     return formatted / len(examples)
+
+
+def lenient_correct_count(result: Mapping[str, Any]) -> int:
+    """Count runs where the gold value appears anywhere in the completion."""
+    return sum(
+        text_mentions_answer(example.get("completion"), example.get("gold"))
+        for example in result.get("examples", [])
+    )
+
+
+def paired_outcomes(baseline: Mapping[str, Any], trained: Mapping[str, Any]) -> dict[str, int]:
+    """Count improved, regressed, and unchanged paired outcomes."""
+    trained_by_index = {example["source_index"]: example for example in trained.get("examples", [])}
+    outcomes = {
+        "improved": 0,
+        "regressed": 0,
+        "both_correct": 0,
+        "both_wrong": 0,
+    }
+    for example in baseline.get("examples", []):
+        trained_example = trained_by_index.get(example["source_index"])
+        if trained_example is None:
+            continue
+        baseline_correct = bool(example.get("correct"))
+        trained_correct = bool(trained_example.get("correct"))
+        if trained_correct and not baseline_correct:
+            outcomes["improved"] += 1
+        elif baseline_correct and not trained_correct:
+            outcomes["regressed"] += 1
+        elif baseline_correct and trained_correct:
+            outcomes["both_correct"] += 1
+        else:
+            outcomes["both_wrong"] += 1
+    return outcomes
+
+
+def mcnemar_exact_p(improved: int, regressed: int) -> float:
+    """Two-sided exact McNemar p-value for discordant pair counts."""
+    discordant = improved + regressed
+    if discordant == 0:
+        return 1.0
+    tail = sum(math.comb(discordant, index) for index in range(min(improved, regressed) + 1))
+    return min(1.0, 2 * tail / (2**discordant))
 
 
 def _accuracy(result: Mapping[str, Any]) -> float:
@@ -100,15 +145,27 @@ def _select_samples(
         for example in baseline.get("examples", [])
         if example["source_index"] in trained_by_index
     ]
-    improved = [pair for pair in pairs if pair[1].get("correct") and not pair[0].get("correct")]
+    improved = [
+        pair
+        for pair in pairs
+        if pair[1].get("correct")
+        and not pair[0].get("correct")
+        and not text_mentions_answer(pair[0].get("completion"), pair[0].get("gold"))
+    ]
     selected = improved[:count]
     if len(selected) < count:
         selected_ids = {baseline_example["source_index"] for baseline_example, _ in selected}
         for pair in pairs:
             if len(selected) >= count:
                 break
-            if pair[0]["source_index"] not in selected_ids:
-                selected.append(pair)
+            baseline_example = pair[0]
+            if baseline_example["source_index"] in selected_ids:
+                continue
+            if text_mentions_answer(
+                baseline_example.get("completion"), baseline_example.get("gold")
+            ):
+                continue
+            selected.append(pair)
     return selected
 
 
@@ -172,9 +229,74 @@ def build_comparison_markdown(
         "Format adherence is the fraction of completions matching the exact "
         "`<think>...</think><answer>...</answer>` template.",
         "",
-        "## Side-by-side samples",
-        "",
     ]
+
+    baseline_lenient = lenient_correct_count(baseline)
+    trained_lenient = lenient_correct_count(trained)
+    lenient_delta_pp = (
+        (trained_lenient - baseline_lenient) / _total(baseline) * 100 if _total(baseline) else 0.0
+    )
+    lines.extend(
+        [
+            "## Extraction sensitivity",
+            "",
+            "Strict scoring uses the extracted final answer (falling back to the last "
+            "number). The lenient upper bound counts a run as correct if the gold value "
+            "appears anywhere.",
+            "",
+            "| Stage | Strict | Lenient upper bound |",
+            "| --- | ---: | ---: |",
+            (
+                f"| Baseline (untrained) | {_correct(baseline)}/{_total(baseline)} "
+                f"({_fmt_pct(baseline_accuracy)}) | "
+                f"{baseline_lenient}/{_total(baseline)} "
+                f"({_fmt_pct(baseline_lenient / _total(baseline) if _total(baseline) else 0.0)}) |"
+            ),
+            (
+                f"| GRPO adapter | {_correct(trained)}/{_total(trained)} "
+                f"({_fmt_pct(trained_accuracy)}) | "
+                f"{trained_lenient}/{_total(trained)} "
+                f"({_fmt_pct(trained_lenient / _total(trained) if _total(trained) else 0.0)}) |"
+            ),
+            f"| Change | {_fmt_signed_pct(delta_pp)} | {_fmt_signed_pct(lenient_delta_pp)} |",
+            "",
+            "The gap between these bounds shows how sensitive the result is to "
+            "final-answer formatting. Use the strict number as the primary result.",
+            "",
+        ]
+    )
+
+    outcomes = paired_outcomes(baseline, trained)
+    p_value = mcnemar_exact_p(outcomes["improved"], outcomes["regressed"])
+    lines.extend(
+        [
+            "## Paired outcomes",
+            "",
+            "| Outcome | Count |",
+            "| --- | ---: |",
+            f"| Improved | {outcomes['improved']} |",
+            f"| Regressed | {outcomes['regressed']} |",
+            f"| Both correct | {outcomes['both_correct']} |",
+            f"| Both wrong | {outcomes['both_wrong']} |",
+            "",
+            (
+                f"McNemar exact two-sided p = {p_value:.3f}. "
+                + (
+                    "This is not statistically significant at 0.05."
+                    if p_value >= 0.05
+                    else "This is statistically significant at 0.05."
+                )
+            ),
+            "",
+        ]
+    )
+
+    lines.extend(
+        [
+            "## Side-by-side samples",
+            "",
+        ]
+    )
 
     sample_pairs = _select_samples(baseline, trained, samples)
     if not sample_pairs:

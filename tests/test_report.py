@@ -7,6 +7,9 @@ from grpo_reasoner.report import (
     build_comparison_markdown,
     compare_settings,
     format_adherence,
+    lenient_correct_count,
+    mcnemar_exact_p,
+    paired_outcomes,
     plot_reward_curves,
 )
 
@@ -60,6 +63,34 @@ def test_format_adherence():
     assert format_adherence(result) == 0.5
 
 
+def test_paired_outcomes():
+    baseline = _result(completions=["a", "b", "c", "d"], corrects=[False, True, False, True])
+    trained = _result(
+        completions=["a", "b", "c", "d"],
+        corrects=[True, False, False, True],
+    )
+    assert paired_outcomes(baseline, trained) == {
+        "improved": 1,
+        "regressed": 1,
+        "both_correct": 1,
+        "both_wrong": 1,
+    }
+
+
+def test_lenient_correct_count():
+    result = _result(
+        completions=["wrong but mentions 0", "wrong with no gold", "too long: 00"],
+        corrects=[False, False, False],
+    )
+    assert lenient_correct_count(result) == 1
+
+
+def test_mcnemar_exact_p():
+    assert mcnemar_exact_p(8, 2) == pytest.approx(0.109375)
+    assert mcnemar_exact_p(0, 0) == 1.0
+    assert mcnemar_exact_p(5, 0) == pytest.approx(0.0625)
+
+
 def test_compare_settings_detects_mismatch():
     baseline = _result(completions=["a", "b"], corrects=[False, False])
     trained = _result(completions=["a", "b"], corrects=[False, False], seed=7)
@@ -74,6 +105,24 @@ def test_compare_settings_accepts_adapter_difference():
         corrects=[False, False],
     )
     assert compare_settings(baseline, trained) == []
+
+
+def test_comparison_skips_ambiguous_baseline_samples():
+    baseline = _result(
+        completions=["wrong but ends with 0 in 1 day", "wrong with no number"],
+        corrects=[False, False],
+    )
+    trained = _result(
+        adapter="outputs/grpo/final_adapter",
+        completions=[
+            "<think>0</think><answer>0</answer>",
+            "<think>1</think><answer>1</answer>",
+        ],
+        corrects=[True, True],
+    )
+    markdown = build_comparison_markdown(baseline, trained, samples=1)
+    assert "### Example 1 (test index 1)" in markdown
+    assert "test index 0" not in markdown
 
 
 def test_comparison_markdown_contains_table_and_improved_sample():
@@ -93,6 +142,11 @@ def test_comparison_markdown_contains_table_and_improved_sample():
     assert "| Baseline (untrained) | 0/2 | 0.0% | 0.0% |" in markdown
     assert "| GRPO adapter | 2/2 | 100.0% | 100.0% |" in markdown
     assert "| Change | +2 | +100.0 pp | +100.0 pp |" in markdown
+    assert "## Extraction sensitivity" in markdown
+    assert "## Paired outcomes" in markdown
+    assert "| Improved | 2 |" in markdown
+    assert "| Regressed | 0 |" in markdown
+    assert "McNemar exact two-sided p = 0.500" in markdown
     assert "### Example 1 (test index 0)" in markdown
     assert "**Baseline** — prediction `999` (wrong)" in markdown
     assert "**GRPO** — prediction `0` (correct)" in markdown
